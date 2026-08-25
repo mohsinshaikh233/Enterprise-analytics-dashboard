@@ -3,12 +3,15 @@ from __future__ import annotations
 import io
 import math
 import re
+import hashlib
+import mimetypes
 from dataclasses import dataclass
 from typing import Optional
 
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+from supabase import create_client
 
 
 # ============================================================
@@ -21,6 +24,7 @@ MAX_SLICER_VALUES = 100
 MAX_BAR_CATEGORIES = 20
 MAX_PIE_CATEGORIES = 10
 MAX_PREVIEW_ROWS = 200
+SUPABASE_BUCKET = "database"
 
 st.set_page_config(
     page_title=APP_TITLE,
@@ -684,6 +688,44 @@ def clean_column_names(df: pd.DataFrame) -> pd.DataFrame:
         )
 
     return result
+
+
+# ============================================================
+# SUPABASE STORAGE
+# ============================================================
+
+def get_supabase_client():
+    return create_client(
+        st.secrets["SUPABASE_URL"],
+        st.secrets["SUPABASE_KEY"],
+    )
+
+
+def dataset_id_for(raw_bytes: bytes, filename: str) -> str:
+    digest = hashlib.sha256(raw_bytes + filename.encode("utf-8")).hexdigest()
+    return digest[:24]
+
+
+def upload_dataset_to_supabase(raw_bytes: bytes, filename: str) -> str:
+    dataset_id = dataset_id_for(raw_bytes, filename)
+    storage_path = f"{dataset_id}/{filename}"
+    client = get_supabase_client()
+    content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+    client.storage.from_(SUPABASE_BUCKET).upload(
+        storage_path,
+        raw_bytes,
+        file_options={
+            "upsert": "true",
+            "content-type": content_type,
+        },
+    )
+    return dataset_id
+
+
+def download_dataset_from_supabase(dataset_id: str, filename: str) -> bytes:
+    storage_path = f"{dataset_id}/{filename}"
+    client = get_supabase_client()
+    return client.storage.from_(SUPABASE_BUCKET).download(storage_path)
 
 
 # ============================================================
@@ -1732,10 +1774,54 @@ uploaded = st.sidebar.file_uploader(
 
 
 # ============================================================
-# EMPTY STATE
+# LOAD OR RESTORE DATASET
 # ============================================================
 
-if uploaded is None:
+shared_dataset_id = st.query_params.get("dataset")
+shared_filename = st.query_params.get("filename")
+
+raw_bytes = None
+active_filename = None
+
+if uploaded is not None:
+    active_filename = uploaded.name
+    raw_bytes = uploaded.getvalue()
+
+    if len(raw_bytes) > MAX_FILE_SIZE_MB * 1024 * 1024:
+        st.error(
+            f"The uploaded file exceeds the "
+            f"{MAX_FILE_SIZE_MB} MB limit."
+        )
+        st.stop()
+
+    current_id = dataset_id_for(raw_bytes, active_filename)
+    if st.session_state.get("uploaded_dataset_id") != current_id:
+        try:
+            upload_dataset_to_supabase(raw_bytes, active_filename)
+            st.session_state["uploaded_dataset_id"] = current_id
+            st.query_params["dataset"] = current_id
+            st.query_params["filename"] = active_filename
+            st.success("Dataset saved. You can now share this URL.")
+        except Exception as exc:
+            st.error(f"Dataset could not be saved to Supabase: {exc}")
+            st.stop()
+
+elif shared_dataset_id and shared_filename:
+    active_filename = shared_filename
+    try:
+        raw_bytes = download_dataset_from_supabase(
+            shared_dataset_id,
+            shared_filename,
+        )
+        st.sidebar.success("Shared dataset loaded.")
+    except Exception as exc:
+        st.error(
+            "The shared dataset could not be loaded from Supabase. "
+            f"Details: {exc}"
+        )
+        st.stop()
+
+else:
     st.markdown(
         """
         <div class="hero-wrap">
@@ -1757,37 +1843,16 @@ if uploaded is None:
 
 
 # ============================================================
-# FILE SIZE
-# ============================================================
-
-raw_bytes = uploaded.getvalue()
-
-if len(raw_bytes) > MAX_FILE_SIZE_MB * 1024 * 1024:
-    st.error(
-        f"The uploaded file exceeds the "
-        f"{MAX_FILE_SIZE_MB} MB limit."
-    )
-    st.stop()
-
-
-# ============================================================
 # LOAD DATA
 # ============================================================
 
 try:
     df = load_dataset(
         raw_bytes,
-        uploaded.name,
+        active_filename,
     )
 except Exception as exc:
     st.error(f"Dataset could not be loaded: {exc}")
-    st.stop()
-
-
-if df.empty or df.shape[1] == 0:
-    st.error(
-        "The uploaded dataset contains no usable rows or columns."
-    )
     st.stop()
 
 
@@ -1823,7 +1888,7 @@ st.markdown(
     <div class="page-header">
         <div class="page-header-left">
             <h1>📊 Enterprise Dynamic Analytics</h1>
-            <p>{uploaded.name} &nbsp;·&nbsp;
+            <p>{active_filename} &nbsp;·&nbsp;
                {len(filtered):,} filtered rows &nbsp;/&nbsp;
                {len(df):,} total &nbsp;·&nbsp;
                {len(df.columns):,} columns</p>
