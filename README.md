@@ -7,7 +7,7 @@
 
 ## Live Demo
 
-[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://YOUR_APP_URL.streamlit.app)
+[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://enterprise-analytics-dashboard-007.streamlit.app/))
 
 ---
 
@@ -51,7 +51,7 @@
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/enterprise-analytics-dashboard.git
+git clone https://mohsinshaikh233//enterprise-analytics-dashboard.git
 cd enterprise-analytics-dashboard
 ```
 
@@ -75,7 +75,7 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-Open your browser at **http://localhost:8501** and upload a CSV or Excel file to begin.
+Open your browser at **[(https://enterprise-analytics-dashboard-007.streamlit.app/) and upload a CSV or Excel file to begin.
 
 ---
 
