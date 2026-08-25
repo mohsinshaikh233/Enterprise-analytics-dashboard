@@ -570,6 +570,25 @@ st.markdown(
     /* hide Streamlit's default "Made with Streamlit" footer */
     footer { visibility: hidden !important; }
 
+    /* ================================================
+       SIDEBAR FILE UPLOADER — fix duplicate button
+       and suppress keyboard_double_arrow icon text
+       ================================================ */
+
+    /* Hide the inner "Browse files" button (duplicate of the drop zone) */
+    [data-testid="stSidebar"] [data-testid="stFileUploader"] button {
+        display: none !important;
+    }
+
+    /* Hide the sidebar collapse arrow icon text that shows as
+       "keyboard_double_arrow_left" when Material Icons font fails */
+    [data-testid="stSidebarCollapseButton"] span {
+        font-size: 0 !important;
+    }
+    [data-testid="stSidebarCollapseButton"] .material-symbols-rounded {
+        font-size: 0 !important;
+    }
+
     </style>
     """,
     unsafe_allow_html=True,
